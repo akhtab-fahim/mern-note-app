@@ -29,7 +29,7 @@ app.get("/note/getAllNotes/:userId", verifyToken, async (req, res) => {
     const { userId } = req.params;
 
     if (req.user.id !== userId) {
-        return res.status(403).json({ message: "Unauthorized access" });
+        return res.status(401).json({ message: "Unauthorized: User ID does not match token" });
     }
 
     try {
@@ -37,10 +37,10 @@ app.get("/note/getAllNotes/:userId", verifyToken, async (req, res) => {
             { $match: { author: new mongoose.Types.ObjectId(userId) } },
             { $sort: { createdAt: -1 } }
         ]);
-        res.status(200).json({ notes });
+        res.status(200).json({ notes, message: "Notes fetched successfully" });
     } catch (err) {
         console.error("Error fetching notes:", err);
-        res.status(500).json({ message: "Failed to fetch notes", error: err.message });
+        res.status(500).json({ message: "Internal server error while fetching notes", error: err.message });
     }
 });
 
@@ -49,7 +49,7 @@ app.post("/note/writeNote", verifyToken, async (req, res) => {
     const { title, content } = req.body;
 
     if (!title || !content) {
-        return res.status(400).json({ message: "Title and Content are required" });
+        return res.status(400).json({ message: "Bad Request: Title and content are required" });
     }
 
     try {
@@ -64,7 +64,7 @@ app.post("/note/writeNote", verifyToken, async (req, res) => {
 
     } catch (err) {
         console.error("Error creating note:", err);
-        res.status(500).json({ message: "Failed to create note", error: err.message });
+        res.status(500).json({ message: "Internal server error while creating note", error: err.message });
     }
 });
 
@@ -74,13 +74,13 @@ app.patch("/note/updateNote/:noteId",verifyToken,async(req,res)=>{
     const { title, content } = req.body;
 
     if (!title || !content) {
-        return res.status(400).json({ message: "Title and Content are required" });
+        return res.status(400).json({ message: "Bad Request: Title and content are required" });
     }
 
     const note = await Note.findById(noteId);
 
     if(!note){
-        return res.status(500).json({ message: "No note exists"});
+        return res.status(404).json({ message: "Note not found" });
     }
 
     const updatedNote = await Note.findByIdAndUpdate(noteId,{$set:{
@@ -88,7 +88,7 @@ app.patch("/note/updateNote/:noteId",verifyToken,async(req,res)=>{
         content : content
     }},{new:true})
 
-    return res.status(200).json({updatedNote, message: "Note updated succesfully "});
+    return res.status(200).json({updatedNote, message: "Note updated successfully"});
 })
 
 //delete a note
@@ -96,10 +96,10 @@ app.delete("/note/deleteNote/:noteId",verifyToken,async(req,res)=>{
     const {noteId} = req.params;
     const note = await Note.findById(noteId);
     if(!note){
-        return res.status(500).json({ message: "No note exists"});
+        return res.status(404).json({ message: "Note not found" });
     }
     await Note.findByIdAndDelete(noteId);
-    return res.status(200).json({ message: "Note deleted succesfully "});
+    return res.status(200).json({ message: "Note deleted successfully" });
 })
 
 
@@ -108,17 +108,16 @@ app.post("/api/auth/login",async(req,res)=>{
     const {name,email,password} = req.body;
 
     if(!name || !email){
-        return res.status(400).json({message : "Name or Email Field is required !! "})
+        return res.status(400).json({message : "Bad Request: Name and email are required" });
     }
 
     const user = await User.findOne({$or: [{ email }, { name }]});
 
     if(!user){
-        return res.status(400).json({message : "No user exists corresponding to the email or name "})
+        return res.status(404).json({message : "User not found with provided email or name" });
     }
 
     const isPasswordCorrect = await bcrypt.compare(password,user.password);
-    console.log(isPasswordCorrect);
 
     if(isPasswordCorrect){
         const options = {
@@ -128,33 +127,31 @@ app.post("/api/auth/login",async(req,res)=>{
     
         const accessToken = jwt.sign({id : user._id,name: user.name},process.env.ACCESS_TOKEN_SECRET,{expiresIn: process.env.ACCESS_TOKEN_EXPIRY});
     
-        res
+        return res
         .cookie("accessToken",accessToken,options)
         .status(200)
-        .json({user,message : "User succesfully logged In"});
+        .json({user,message : "User successfully logged in"});
     }
-    res
+    return res
         .status(401)
-        .json({message : "Password incorrect Login failed"});
+        .json({message : "Unauthorized: Incorrect password"});
 })
 
 //lets user register
-app.post("/api/auth/register",async(req,res)=>{
+app.post("/api/auth/register",async(req,res)=> {
     console.log(req.body);
     
     const {name,email,password} = req.body;
 
     if(!name || !email || !password){
-        return res.status(401).json("User must provide name and email and password !! ")
+        return res.status(400).json({ message: "Bad Request: Name, email, and password are required" });
     }
 
     const existedUser = await User.findOne({$or: [{ email }, { name }]});
 
     if(existedUser){
-        // console.log(email);
-        return res.status(401).json("User already exists");
+        return res.status(409).json({ message: "Conflict: User already exists" });
     }
-
 
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password,saltRounds);
@@ -168,7 +165,9 @@ app.post("/api/auth/register",async(req,res)=>{
     const createdUser = await User.findById(user._id).select("-password");
     if(!createdUser){
         console.log("User not created ");  
-        return res.status(401).json("User not created");  
+    if(!createdUser){
+        console.log("User not created ");  
+        return res.status(500).json({ message: "Internal server error: User not created" });  
     }
     const accessToken = jwt.sign({id: user._id,name: user.name},process.env.ACCESS_TOKEN_SECRET,{expiresIn : process.env.ACCESS_TOKEN_EXPIRY})
 
@@ -179,12 +178,10 @@ app.post("/api/auth/register",async(req,res)=>{
 
     res
     .cookie("accessToken",accessToken,options)
-    .status(200)
-    .json({createdUser,message : "User succesfully registered"});
+    .status(201)
+    .json({createdUser,message : "User successfully registered"});
 
-})
-
-connectDB();
+}})
 
 app.listen(3000,()=>{
     console.log("server running on port 3000");
