@@ -4,21 +4,24 @@ import dotenv from "dotenv";
 dotenv.config()
 
 export const verifyToken = (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    if(!authHeader || !authHeader.startsWith("Bearer")){
-        return res.status(401).json({ error: "No Auth header found" });
-    } 
-    const token = authHeader.split(" ")[1];
+    // const authHeader = req.headers.authorization;
+    // if(!authHeader || !authHeader.startsWith("Bearer")){
+    //     return res.status(401).json({ error: "No Auth header found" });
+    // } 
+    const token = req.cookies.accessToken;
+    if (!token) {
+        return res.status(401).json({ error: "Authentication token not found. Please log in or register." });
+    }
     try {
         const verifiedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
-        if(!verifiedToken){
-            return res.status(401).json({ error: "Error while verifying the token" });
+        if (!verifiedToken) {
+            return res.status(403).json({ error: "Failed to verify authentication token." });
         }
         req.user = verifiedToken;
         next();
     } catch (error) {
-        console.log("Token not verified ", error);
-        return res.status(401).json({ error: "Invalid token" });
+        console.error("Token verification failed:", error);
+        return res.status(403).json({ error: "Invalid or expired authentication token." });
     }
 };
 

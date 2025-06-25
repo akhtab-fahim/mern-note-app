@@ -8,11 +8,12 @@ const userSchema = new mongoose.Schema({
     email:{
         type: String,
         reuired : true,
+        unique : true
     },
     password:{
         type: String,
         reuired : true,
-    },
+    }
 },{timestamps:true})
 
 export const User = mongoose.model("User",userSchema)

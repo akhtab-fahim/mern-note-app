@@ -10,6 +10,9 @@ yarn-error.log*
 .env.*.local
 
 # Logs
+
+# Node modules
+node_modules/
 logs/
 *.log
 
